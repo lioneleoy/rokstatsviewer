@@ -127,8 +127,8 @@ if folder_path:
                                 if column in aggregated_data.columns:
                                     aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
-                                    # Create a line chart with markers
-                                    chart = alt.Chart(aggregated_data).mark_line().encode(
+                                    # Create a line chart with markers and different colors
+                                    chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
                                         x='Date:T',
                                         y=alt.Y(column, title=f"{column}"),
                                         tooltip=['Date:T', column]
@@ -136,7 +136,7 @@ if folder_path:
                                         title=f"Trend of {column} over Time for governorID {selected_display}",
                                         width=800,
                                         height=400
-                                    ).mark_point()  # Adding markers to the line chart
+                                    ).mark_point(color='red', size=60)  # Markers with red color
 
                                     st.altair_chart(chart)
                                 else:
