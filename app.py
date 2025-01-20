@@ -102,7 +102,11 @@ if folder_path:
                         )
                         filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
 
-                st.write(filtered_data)
+                # Display the filtered data with a larger table size
+                st.write(filtered_data)  # Display table with default size
+
+                # For a larger table, we use st.dataframe() with the use_container_width argument
+                st.dataframe(filtered_data, use_container_width=True)
 
                 # Add g_id filter for trend visualization
                 if 'governorID' in data.columns and 'name' in data.columns:
