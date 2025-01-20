@@ -128,15 +128,20 @@ if folder_path:
                                     aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
                                     # Create a line chart with markers and different colors
-                                    chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
+                                    line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
                                         x='Date:T',
                                         y=alt.Y(column, title=f"{column}"),
                                         tooltip=['Date:T', column]
-                                    ).properties(
-                                        title=f"Trend of {column} over Time for governorID {selected_display}",
-                                        width=800,
-                                        height=400
-                                    ).mark_point(color='red', size=60)  # Markers with red color
+                                    )
+                                    
+                                    points_chart = alt.Chart(aggregated_data).mark_point(color='red', size=60).encode(
+                                        x='Date:T',
+                                        y=alt.Y(column),
+                                        tooltip=['Date:T', column]
+                                    )
+                                    
+                                    # Combine both line and points
+                                    chart = line_chart + points_chart
 
                                     st.altair_chart(chart)
                                 else:
