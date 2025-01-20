@@ -4,6 +4,44 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 
+# Translation dictionary
+translations = {
+    "en": {
+        "title": "Kingdom 1007 Stats tracker",
+        "select_date": "Select a date to display:",
+        "display_data_for_table": "Displaying data for table: ",
+        "filter_options": "Filter Options",
+        "select_columns_to_filter": "Select columns to filter:",
+        "select_governor": "Select governorID for trend visualization:",
+        "trend_analysis": "Trend Analysis for governorID:",
+        "trend_of": "Trend of {column} over Time for governorID {selected_display}",
+        "no_data_found": "No data found for table: ",
+        "no_data_for_g_id": "No data available for the selected g_id.",
+        "no_tables_found": "No tables found in the database.",
+        "error_occurred": "An error occurred: {error}",
+        "warning_missing_column": "Column {column} is missing or non-numeric."
+    },
+    "es": {
+        "title": "Rastreador de estadísticas Kingdom 1007",
+        "select_date": "Seleccionar una fecha para mostrar:",
+        "display_data_for_table": "Mostrando datos para la tabla: ",
+        "filter_options": "Opciones de filtro",
+        "select_columns_to_filter": "Seleccionar columnas para filtrar:",
+        "select_governor": "Seleccionar governorID para visualización de tendencias:",
+        "trend_analysis": "Análisis de tendencias para governorID:",
+        "trend_of": "Tendencia de {column} a lo largo del tiempo para governorID {selected_display}",
+        "no_data_found": "No se encontraron datos para la tabla: ",
+        "no_data_for_g_id": "No hay datos disponibles para el governorID seleccionado.",
+        "no_tables_found": "No se encontraron tablas en la base de datos.",
+        "error_occurred": "Ocurrió un error: {error}",
+        "warning_missing_column": "La columna {column} falta o no es numérica."
+    }
+}
+
+# Function to translate text
+def translate(text, lang="en"):
+    return translations[lang].get(text, text)
+
 # Function to read all CSV files in a folder and ingest them into SQLite
 def ingest_csv_to_sqlite(folder_path, db_path):
     conn = sqlite3.connect(db_path)
@@ -40,7 +78,6 @@ def get_table_names(db_path):
 # Function to fetch data from a specific table in SQLite database
 def fetch_table_data(db_path, table_name):
     conn = sqlite3.connect(db_path)
-    # Escape table name to handle special cases
     df = pd.read_sql_query(f'SELECT * FROM "{table_name}"', conn)
     conn.close()
     return df
@@ -57,7 +94,11 @@ def aggregate_data(db_path, table_names):
     return pd.concat(aggregated_data, ignore_index=True)
 
 # Streamlit app
-st.title("Kingdom 1007 Stats tracker")
+# Language selection
+lang = st.selectbox("Choose language / Elige idioma:", ["en", "es"])
+
+# Title
+st.title(translate("title", lang))
 
 folder_path = 'data/'
 db_path = "ingested_data.db"
@@ -71,38 +112,40 @@ if folder_path:
         table_names = get_table_names(db_path)
 
         if table_names:
-            selected_table = st.selectbox("Select a date to display:", table_names)
+            selected_table = st.selectbox(translate("select_date", lang), table_names)
 
             if selected_table:
-                st.write(f"Displaying data for table: {selected_table}")
+                st.write(f"{translate('display_data_for_table', lang)} {selected_table}")
                 data = fetch_table_data(db_path, selected_table)
 
                 # Add filters for the selected table
-                st.sidebar.header("Filter Options")
-                filter_columns = st.sidebar.multiselect("Select columns to filter:", data.columns)
+                st.sidebar.header(translate("filter_options", lang))
+                filter_columns = st.sidebar.multiselect(translate("select_columns_to_filter", lang), data.columns)
 
                 filtered_data = data.copy()
                 for column in filter_columns:
                     unique_values = data[column].unique()
-                    filter_value = st.sidebar.selectbox(f"Filter {column}:", unique_values)
+                    filter_value = st.sidebar.selectbox(f"{translate('filter_options', lang)} {column}:", unique_values)
                     filtered_data = filtered_data[filtered_data[column] == filter_value]
 
                 # Add range filters for a selected column
-                st.sidebar.header("Range Filters")
+                st.sidebar.header(translate("filter_options", lang))
                 numeric_columns = data.select_dtypes(include=['number']).columns
 
                 if not numeric_columns.empty:
-                    selected_numeric_column = st.sidebar.selectbox("Select a column for range filter:", numeric_columns)
+                    selected_numeric_column = st.sidebar.selectbox(f"{translate('select_columns_to_filter', lang)}", numeric_columns)
 
                     if selected_numeric_column:
                         min_val = float(data[selected_numeric_column].min())
                         max_val = float(data[selected_numeric_column].max())
                         range_values = st.sidebar.slider(
-                            f"Select range for {selected_numeric_column}:", min_val, max_val, (min_val, max_val)
+                            f"{translate('select_columns_to_filter', lang)} {selected_numeric_column}:", min_val, max_val, (min_val, max_val)
                         )
                         filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
 
-                st.write(filtered_data)
+                # Display the filtered data with a larger table size
+                st.write(filtered_data)  # Display table with default size
+                st.dataframe(filtered_data, use_container_width=True)  # Increased table width
 
                 # Add g_id filter for trend visualization
                 if 'governorID' in data.columns and 'name' in data.columns:
@@ -110,11 +153,11 @@ if folder_path:
                     g_id_with_name['display'] = g_id_with_name.apply(lambda row: f"{row['governorID']} ({row['name']})", axis=1)
 
                     display_to_g_id = dict(zip(g_id_with_name['display'], g_id_with_name['governorID']))
-                    selected_display = st.sidebar.selectbox("Select governorID for trend visualization:", g_id_with_name['display'])
+                    selected_display = st.sidebar.selectbox(translate("select_governor", lang), g_id_with_name['display'])
                     selected_g_id = display_to_g_id[selected_display]
 
                     if selected_g_id:
-                        st.header(f"Trend Analysis for governorID: {selected_display}")
+                        st.header(f"{translate('trend_analysis', lang)} {selected_display}")
                         aggregated_data = aggregate_data(db_path, table_names)
 
                         # Filter aggregated data by selected g_id
@@ -145,18 +188,18 @@ if folder_path:
 
                                     # Adjust the size of the graph area
                                     chart = chart.properties(
-                                        title=f"Trend of {column} over Time for governorID {selected_display}",
-                                        width=750,  # Increased width
+                                        title=translate("trend_of", lang).format(column=column, selected_display=selected_display),
+                                        width=1000,  # Increased width
                                         height=600  # Increased height
                                     )
 
                                     st.altair_chart(chart)
                                 else:
-                                    st.warning(f"Column {column} is missing or non-numeric.")
+                                    st.warning(translate("warning_missing_column", lang).format(column=column))
                         else:
-                            st.warning("No data available for the selected g_id.")
+                            st.warning(translate("no_data_for_g_id", lang))
 
         else:
-            st.warning("No tables found in the database.")
+            st.warning(translate("no_tables_found", lang))
     except Exception as e:
-        st.error(f"An error occurred: {e}")
+        st.error(translate("error_occurred", lang).format(error=e))
