@@ -127,9 +127,7 @@ if folder_path:
                                 if column in aggregated_data.columns:
                                     aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
-                            # Columns for trend visualization
-                            for column in trend_columns:
-                                if column in aggregated_data.columns:
+                                    # Create a line chart with markers
                                     chart = alt.Chart(aggregated_data).mark_line().encode(
                                         x='Date:T',
                                         y=alt.Y(column, title=f"{column}"),
@@ -138,7 +136,8 @@ if folder_path:
                                         title=f"Trend of {column} over Time for governorID {selected_display}",
                                         width=800,
                                         height=400
-                                    )
+                                    ).mark_point()  # Adding markers to the line chart
+
                                     st.altair_chart(chart)
                                 else:
                                     st.warning(f"Column {column} is missing or non-numeric.")
