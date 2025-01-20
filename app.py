@@ -143,6 +143,13 @@ if folder_path:
                                     # Combine both line and points
                                     chart = line_chart + points_chart
 
+                                    # Adjust the size of the graph area
+                                    chart = chart.properties(
+                                        title=f"Trend of {column} over Time for governorID {selected_display}",
+                                        width=1000,  # Increased width
+                                        height=600  # Increased height
+                                    )
+
                                     st.altair_chart(chart)
                                 else:
                                     st.warning(f"Column {column} is missing or non-numeric.")
