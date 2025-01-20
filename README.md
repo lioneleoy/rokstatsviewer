@@ -110,7 +110,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For any questions or issues, feel free to contact the project maintainer:
 
-- [GitHub Profile](https://github.com/username)
+- [GitHub Profile](https://github.com/lioneleoy)
 - Email: [lioneleoy@gmail.com]
 
 ---
