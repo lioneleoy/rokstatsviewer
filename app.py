@@ -144,8 +144,7 @@ if folder_path:
                         filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
 
                 # Display the filtered data with a larger table size
-                st.write(filtered_data)  # Display table with default size
-                st.dataframe(filtered_data, use_container_width=True)  # Increased table width
+                st.dataframe(filtered_data, use_container_width=True)  # Increased table width, only using this line
 
                 # Add g_id filter for trend visualization
                 if 'governorID' in data.columns and 'name' in data.columns:
@@ -189,7 +188,7 @@ if folder_path:
                                     # Adjust the size of the graph area
                                     chart = chart.properties(
                                         title=translate("trend_of", lang).format(column=column, selected_display=selected_display),
-                                        width=1000,  # Increased width
+                                        width=725,  # Increased width
                                         height=600  # Increased height
                                     )
 
