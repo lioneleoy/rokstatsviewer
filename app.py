@@ -19,13 +19,7 @@ translations = {
         "no_data_for_g_id": "No data available for the selected g_id.",
         "no_tables_found": "No tables found in the database.",
         "error_occurred": "An error occurred: {error}",
-        "warning_missing_column": "Column {column} is missing or non-numeric.",
-        "metrics": "Metrics for Selected Date Range",
-        "power_change": "Power Change:",
-        "deads_gained": "Deads Gained:",
-        "kill_points_gained": "Kill Points Gained:",
-        "date_range_filter": "Date Range Filter",
-        "select_date_range": "Select Date Range:"
+        "warning_missing_column": "Column {column} is missing or non-numeric."
     },
     "es": {
         "title": "Rastreador de estadísticas Kingdom 1007",
@@ -40,13 +34,7 @@ translations = {
         "no_data_for_g_id": "No hay datos disponibles para el governorID seleccionado.",
         "no_tables_found": "No se encontraron tablas en la base de datos.",
         "error_occurred": "Ocurrió un error: {error}",
-        "warning_missing_column": "La columna {column} falta o no es numérica.",
-        "metrics": "Métricas para el rango de fechas seleccionado",
-        "power_change": "Cambio de Poder:",
-        "deads_gained": "Muertos Ganados:",
-        "kill_points_gained": "Puntos de Muerte Ganados:",
-        "date_range_filter": "Filtro de Rango de Fechas",
-        "select_date_range": "Seleccionar Rango de Fechas:"
+        "warning_missing_column": "La columna {column} falta o no es numérica."
     }
 }
 
@@ -105,6 +93,14 @@ def aggregate_data(db_path, table_names):
 
     return pd.concat(aggregated_data, ignore_index=True)
 
+# Function to calculate metrics for each governorID
+def calculate_metrics(data):
+    data = data.sort_values(by=['governorID', 'Date'])
+    data['power_change'] = data.groupby('governorID')['power'].diff().fillna(0)
+    data['dead_gained'] = data.groupby('governorID')['deads'].diff().fillna(0)
+    data['kill_points_gained'] = data.groupby('governorID')['killpoints'].diff().fillna(0)
+    return data
+
 # Streamlit app
 # Language selection
 lang = st.selectbox("Choose language / Elige idioma:", ["en", "es"])
@@ -130,6 +126,16 @@ if folder_path:
                 st.write(f"{translate('display_data_for_table', lang)} {selected_table}")
                 data = fetch_table_data(db_path, selected_table)
 
+                # Add date range filter
+                if 'Date' in data.columns:
+                    min_date = data['Date'].min()
+                    max_date = data['Date'].max()
+                    date_range = st.sidebar.date_input("Select date range:", [min_date, max_date], min_value=min_date, max_value=max_date)
+
+                    if len(date_range) == 2:
+                        start_date, end_date = date_range
+                        data = data[(data['Date'] >= start_date) & (data['Date'] <= end_date)]
+
                 # Add filters for the selected table
                 st.sidebar.header(translate("filter_options", lang))
                 filter_columns = st.sidebar.multiselect(translate("select_columns_to_filter", lang), data.columns)
@@ -140,71 +146,65 @@ if folder_path:
                     filter_value = st.sidebar.selectbox(f"{translate('filter_options', lang)} {column}:", unique_values)
                     filtered_data = filtered_data[filtered_data[column] == filter_value]
 
-                # Add range filters for a selected column
-                numeric_columns = data.select_dtypes(include=['number']).columns
+                # Calculate metrics
+                filtered_data = calculate_metrics(filtered_data)
 
-                if not numeric_columns.empty:
-                    selected_numeric_column = st.sidebar.selectbox(f"{translate('select_columns_to_filter', lang)}", numeric_columns)
-
-                    if selected_numeric_column:
-                        min_val = float(data[selected_numeric_column].min())
-                        max_val = float(data[selected_numeric_column].max())
-                        range_values = st.sidebar.slider(
-                            f"{translate('select_columns_to_filter', lang)} {selected_numeric_column}:", min_val, max_val, (min_val, max_val)
-                        )
-                        filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
-
-                # Display the filtered data
+                # Display the filtered data with metrics
                 st.dataframe(filtered_data, use_container_width=True)
 
-                # Add date range filter for aggregated data
-                st.sidebar.header(translate("date_range_filter", lang))
-                aggregated_data = aggregate_data(db_path, table_names)
+                # Add g_id filter for trend visualization
+                if 'governorID' in data.columns and 'name' in data.columns:
+                    g_id_with_name = data[['governorID', 'name']].drop_duplicates()
+                    g_id_with_name['display'] = g_id_with_name.apply(lambda row: f"{row['governorID']} ({row['name']})", axis=1)
 
-                if not aggregated_data.empty:
-                    date_range = st.sidebar.date_input(
-                        translate("select_date_range", lang),
-                        value=(aggregated_data['Date'].min(), aggregated_data['Date'].max()),
-                        min_value=aggregated_data['Date'].min(),
-                        max_value=aggregated_data['Date'].max()
-                    )
+                    display_to_g_id = dict(zip(g_id_with_name['display'], g_id_with_name['governorID']))
+                    selected_display = st.sidebar.selectbox(translate("select_governor", lang), g_id_with_name['display'])
+                    selected_g_id = display_to_g_id[selected_display]
 
-                    if date_range and len(date_range) == 2:
-                        start_date, end_date = date_range
+                    if selected_g_id:
+                        st.header(f"{translate('trend_analysis', lang)} {selected_display}")
+                        aggregated_data = aggregate_data(db_path, table_names)
+                        aggregated_data = calculate_metrics(aggregated_data)
 
-                        filtered_by_date = aggregated_data[
-                            (aggregated_data['Date'] >= pd.Timestamp(start_date)) &
-                            (aggregated_data['Date'] <= pd.Timestamp(end_date))
-                        ]
+                        # Filter aggregated data by selected g_id
+                        aggregated_data = aggregated_data[aggregated_data['governorID'] == int(selected_g_id)]
 
-                        if not filtered_by_date.empty:
-                            # Display filtered data
-                            st.write(f"Data from {start_date} to {end_date}:")
-                            st.dataframe(filtered_by_date)
+                        if not aggregated_data.empty:
+                            # Ensure numeric data consistency for trend columns
+                            trend_columns = ['power_change', 'dead_gained', 'kill_points_gained']
+                            for column in trend_columns:
+                                if column in aggregated_data.columns:
+                                    aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
-                            # Compute metrics
-                            power_change = (
-                                filtered_by_date['power'].iloc[-1] - filtered_by_date['power'].iloc[0]
-                                if 'power' in filtered_by_date.columns else None
-                            )
-                            deads_gained = (
-                                filtered_by_date['deads'].sum()
-                                if 'deads' in filtered_by_date.columns else None
-                            )
-                            kill_points_gained = (
-                                filtered_by_date['killpoints'].sum()
-                                if 'killpoints' in filtered_by_date.columns else None
-                            )
+                                    # Create a line chart with markers and different colors
+                                    line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
+                                        x='Date:T',
+                                        y=alt.Y(column, title=f"{column}"),
+                                        tooltip=['Date:T', column]
+                                    )
 
-                            # Display metrics
-                            st.subheader(translate("metrics", lang))
-                            st.write(f"**{translate('power_change', lang)}** {power_change if power_change is not None else 'N/A'}")
-                            st.write(f"**{translate('deads_gained', lang)}** {deads_gained if deads_gained is not None else 'N/A'}")
-                            st.write(f"**{translate('kill_points_gained', lang)}** {kill_points_gained if kill_points_gained is not None else 'N/A'}")
+                                    points_chart = alt.Chart(aggregated_data).mark_point(color='red', size=60).encode(
+                                        x='Date:T',
+                                        y=alt.Y(column),
+                                        tooltip=['Date:T', column]
+                                    )
+
+                                    # Combine both line and points
+                                    chart = line_chart + points_chart
+
+                                    # Adjust the size of the graph area
+                                    chart = chart.properties(
+                                        title=translate("trend_of", lang).format(column=column, selected_display=selected_display),
+                                        width=725,
+                                        height=600
+                                    )
+
+                                    st.altair_chart(chart)
+                                else:
+                                    st.warning(translate("warning_missing_column", lang).format(column=column))
                         else:
-                            st.warning(translate("no_data_found", lang))
-                else:
-                    st.warning(translate("no_data_found", lang))
+                            st.warning(translate("no_data_for_g_id", lang))
+
         else:
             st.warning(translate("no_tables_found", lang))
     except Exception as e:
