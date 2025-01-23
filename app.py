@@ -168,24 +168,20 @@ if folder_path:
                                     aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
                                     aggregated_data['Difference'] = aggregated_data[column].diff()
-                                    aggregated_data['Arrow'] = aggregated_data['Difference'].apply(
-                                        lambda x: '⬆️' if x > 0 else ('⬇️' if x < 0 else '')
-                                    )
-
-                                    aggregated_data['Tooltip'] = aggregated_data.apply(
-                                        lambda row: f"Date: {row['Date']}\n{column}: {row[column]}\nChange: {row['Arrow']} {abs(row['Difference'])}", axis=1
+                                    aggregated_data['Label'] = aggregated_data['Difference'].apply(
+                                        lambda x: f"{column.capitalize()}Gained +{x}" if x > 0 else (f"{column.capitalize()}Lost {abs(x)}" if x < 0 else "")
                                     )
 
                                     line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
                                         x='Date:T',
                                         y=alt.Y(column, title=f"{column}"),
-                                        tooltip=['Date:T', column]
+                                        tooltip=['Date:T', column, 'Difference']
                                     )
 
-                                    points_chart = alt.Chart(aggregated_data).mark_point(color='red', size=60).encode(
+                                    points_chart = alt.Chart(aggregated_data).mark_text(align='left', dx=5, dy=-10, fontSize=12).encode(
                                         x='Date:T',
                                         y=alt.Y(column),
-                                        tooltip=['Tooltip']
+                                        text='Label'
                                     )
 
                                     chart = (line_chart + points_chart).properties(
