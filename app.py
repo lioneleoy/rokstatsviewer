@@ -169,7 +169,7 @@ if folder_path:
 
                                     aggregated_data['Difference'] = aggregated_data[column].diff()
                                     aggregated_data['Label'] = aggregated_data['Difference'].apply(
-                                        lambda x: f"+{x}" if x > 0 else (f"{x}" if x < 0 else "")
+                                        lambda x: f"{column.capitalize()} Gained +{x}" if x > 0 else (f"{column.capitalize()} Lost {abs(x)}" if x < 0 else "")
                                     )
 
                                     line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
