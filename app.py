@@ -194,4 +194,10 @@ if folder_path:
                                         height=500
                                     )
 
-                                    with st.expander(f"View Trend: {column}")
+                                    with st.expander(f"View Trend: {column}"):
+                                        st.altair_chart(chart)
+
+        else:
+            st.warning(translate("no_tables_found", lang))
+    except Exception as e:
+        st.error(translate("error_occurred", lang).format(error=e))
