@@ -7,7 +7,7 @@ import altair as alt
 # Translation dictionary
 translations = {
     "en": {
-        "title": "Kingdom 1007 Stats tracker",
+        "title": "Kingdom 1007 Stats Tracker",
         "select_date": "Select a date to display:",
         "display_data_for_table": "Displaying data for table: ",
         "filter_options": "Filter Options",
@@ -50,10 +50,9 @@ def ingest_csv_to_sqlite(folder_path, db_path):
     for file_name in os.listdir(folder_path):
         if file_name.endswith('.csv'):
             file_path = os.path.join(folder_path, file_name)
-            table_name = os.path.splitext(file_name)[0]  # Use the file name without extension as table name
+            table_name = os.path.splitext(file_name)[0]
             df = pd.read_csv(file_path)
 
-            # Convert numeric columns stored as strings with commas to integers
             for column in df.columns:
                 if df[column].dtype == 'object':
                     try:
@@ -88,14 +87,16 @@ def aggregate_data(db_path, table_names):
 
     for table_name in table_names:
         df = fetch_table_data(db_path, table_name)
-        df['Date'] = pd.to_datetime(table_name, format="%m%d%Y", errors='coerce')  # Convert table name to datetime
+        df['Date'] = pd.to_datetime(table_name, format="%m%d%Y", errors='coerce')
         aggregated_data.append(df)
 
     return pd.concat(aggregated_data, ignore_index=True)
 
 # Streamlit app
+st.set_page_config(page_title="Kingdom 1007 Stats Tracker", layout="wide")
+
 # Language selection
-lang = st.selectbox("Choose language / Elige idioma:", ["en", "es"])
+lang = st.sidebar.selectbox("Choose language / Elige idioma:", ["en", "es"])
 
 # Title
 st.title(translate("title", lang))
@@ -112,91 +113,89 @@ if folder_path:
         table_names = get_table_names(db_path)
 
         if table_names:
-            selected_table = st.selectbox(translate("select_date", lang), table_names)
+            selected_table = st.sidebar.selectbox(translate("select_date", lang), table_names)
 
             if selected_table:
-                st.write(f"{translate('display_data_for_table', lang)} {selected_table}")
+                st.markdown(f"### {translate('display_data_for_table', lang)} {selected_table}")
+
                 data = fetch_table_data(db_path, selected_table)
 
-                # Add filters for the selected table
-                st.sidebar.header(translate("filter_options", lang))
-                filter_columns = st.sidebar.multiselect(translate("select_columns_to_filter", lang), data.columns)
+                # Sidebar Filters
+                with st.sidebar.expander(translate("filter_options", lang)):
+                    filter_columns = st.multiselect(translate("select_columns_to_filter", lang), data.columns)
 
-                filtered_data = data.copy()
-                for column in filter_columns:
-                    unique_values = data[column].unique()
-                    filter_value = st.sidebar.selectbox(f"{translate('filter_options', lang)} {column}:", unique_values)
-                    filtered_data = filtered_data[filtered_data[column] == filter_value]
+                    filtered_data = data.copy()
+                    for column in filter_columns:
+                        unique_values = data[column].unique()
+                        filter_value = st.selectbox(f"{translate('filter_options', lang)} {column}:", unique_values)
+                        filtered_data = filtered_data[filtered_data[column] == filter_value]
 
-                # Add range filters for a selected column
-                st.sidebar.header(translate("filter_options", lang))
-                numeric_columns = data.select_dtypes(include=['number']).columns
+                    numeric_columns = data.select_dtypes(include=['number']).columns
+                    if not numeric_columns.empty:
+                        selected_numeric_column = st.selectbox(f"{translate('select_columns_to_filter', lang)}", numeric_columns)
+                        if selected_numeric_column:
+                            min_val = float(data[selected_numeric_column].min())
+                            max_val = float(data[selected_numeric_column].max())
+                            range_values = st.slider(
+                                f"{translate('select_columns_to_filter', lang)} {selected_numeric_column}:", min_val, max_val, (min_val, max_val)
+                            )
+                            filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
 
-                if not numeric_columns.empty:
-                    selected_numeric_column = st.sidebar.selectbox(f"{translate('select_columns_to_filter', lang)}", numeric_columns)
+                # Display data
+                with st.expander("View Data Table"):
+                    st.dataframe(filtered_data, use_container_width=True)
 
-                    if selected_numeric_column:
-                        min_val = float(data[selected_numeric_column].min())
-                        max_val = float(data[selected_numeric_column].max())
-                        range_values = st.sidebar.slider(
-                            f"{translate('select_columns_to_filter', lang)} {selected_numeric_column}:", min_val, max_val, (min_val, max_val)
-                        )
-                        filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
-
-                # Display the filtered data with a larger table size
-                st.dataframe(filtered_data, use_container_width=True)  # Increased table width, only using this line
-
-                # Add g_id filter for trend visualization
-                if 'governorID' in data.columns and 'name' in data.columns:
+                # Trend Visualization
+                if 'governorID' in data.columns:
                     g_id_with_name = data[['governorID', 'name']].drop_duplicates()
                     g_id_with_name['display'] = g_id_with_name.apply(lambda row: f"{row['governorID']} ({row['name']})", axis=1)
 
                     display_to_g_id = dict(zip(g_id_with_name['display'], g_id_with_name['governorID']))
                     selected_display = st.sidebar.selectbox(translate("select_governor", lang), g_id_with_name['display'])
-                    selected_g_id = display_to_g_id[selected_display]
 
-                    if selected_g_id:
-                        st.header(f"{translate('trend_analysis', lang)} {selected_display}")
+                    if selected_display:
+                        selected_g_id = display_to_g_id[selected_display]
+                        st.markdown(f"### {translate('trend_analysis', lang)} {selected_display}")
+
                         aggregated_data = aggregate_data(db_path, table_names)
-
-                        # Filter aggregated data by selected g_id
                         aggregated_data = aggregated_data[aggregated_data['governorID'] == int(selected_g_id)]
 
                         if not aggregated_data.empty:
-                            # Ensure numeric data consistency for trend columns
-                            trend_columns = ['power', 'killpoints', 'deads']
+                            trend_columns = st.multiselect("Select columns for trends:", ['power', 'killpoints', 'deads'])
+
                             for column in trend_columns:
                                 if column in aggregated_data.columns:
                                     aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
-                                    # Create a line chart with markers and different colors
+                                    aggregated_data['Difference'] = aggregated_data[column].diff()
+                                    aggregated_data['Arrow'] = aggregated_data['Difference'].apply(
+                                        lambda x: '⬆️' if x > 0 else ('⬇️' if x < 0 else '')
+                                    )
+
+                                    aggregated_data['Tooltip'] = aggregated_data.apply(
+                                        lambda row: f"Date: {row['Date']}\n{column}: {row[column]}\nChange: {row['Arrow']} {abs(row['Difference'])}", axis=1
+                                    )
+
                                     line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
                                         x='Date:T',
                                         y=alt.Y(column, title=f"{column}"),
                                         tooltip=['Date:T', column]
                                     )
-                                    
+
                                     points_chart = alt.Chart(aggregated_data).mark_point(color='red', size=60).encode(
                                         x='Date:T',
                                         y=alt.Y(column),
-                                        tooltip=['Date:T', column]
+                                        tooltip=['Tooltip']
                                     )
-                                    
-                                    # Combine both line and points
-                                    chart = line_chart + points_chart
 
-                                    # Adjust the size of the graph area
-                                    chart = chart.properties(
+                                    chart = (line_chart + points_chart).properties(
                                         title=translate("trend_of", lang).format(column=column, selected_display=selected_display),
-                                        width=725,  # Increased width
-                                        height=600  # Increased height
+                                        width=800,
+                                        height=500
                                     )
 
-                                    st.altair_chart(chart)
-                                else:
-                                    st.warning(translate("warning_missing_column", lang).format(column=column))
-                        else:
-                            st.warning(translate("no_data_for_g_id", lang))
+                                    with st.expander(f"View Trend: {column}"):
+                                        st.altair_chart(chart)
 
         else:
             st.warning(translate("no_tables_found", lang))
