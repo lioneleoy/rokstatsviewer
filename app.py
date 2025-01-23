@@ -167,6 +167,15 @@ if folder_path:
                                 if column in aggregated_data.columns:
                                     aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
 
+                                    aggregated_data['Difference'] = aggregated_data[column].diff()
+                                    aggregated_data['Arrow'] = aggregated_data['Difference'].apply(
+                                        lambda x: '⬆️' if x > 0 else ('⬇️' if x < 0 else '')
+                                    )
+
+                                    aggregated_data['Tooltip'] = aggregated_data.apply(
+                                        lambda row: f"Date: {row['Date']}\n{column}: {row[column]}\nChange: {row['Arrow']} {abs(row['Difference'])}", axis=1
+                                    )
+
                                     line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
                                         x='Date:T',
                                         y=alt.Y(column, title=f"{column}"),
@@ -176,7 +185,7 @@ if folder_path:
                                     points_chart = alt.Chart(aggregated_data).mark_point(color='red', size=60).encode(
                                         x='Date:T',
                                         y=alt.Y(column),
-                                        tooltip=['Date:T', column]
+                                        tooltip=['Tooltip']
                                     )
 
                                     chart = (line_chart + points_chart).properties(
@@ -185,14 +194,4 @@ if folder_path:
                                         height=500
                                     )
 
-                                    with st.expander(f"View Trend: {column}"):
-                                        st.altair_chart(chart)
-                                else:
-                                    st.warning(translate("warning_missing_column", lang).format(column=column))
-                        else:
-                            st.warning(translate("no_data_for_g_id", lang))
-
-        else:
-            st.warning(translate("no_tables_found", lang))
-    except Exception as e:
-        st.error(translate("error_occurred", lang).format(error=e))
+                                    with st.expander(f"View Trend: {column}")
