@@ -34,7 +34,7 @@ translations = {
         "no_data_found": "No se encontraron datos para la tabla: ",
         "no_data_for_g_id": "No hay datos disponibles para el governorID seleccionado.",
         "no_tables_found": "No se encontraron tablas en la base de datos.",
-        "error_ocurrido": "Ocurrió un error: {error}",
+        "error_occurred": "Ocurrió un error: {error}",
         "warning_missing_column": "La columna {column} falta o no es numérica.",
         "kills_and_deads_summary": "Resumen de Kills y Deads"
     }
@@ -44,7 +44,17 @@ translations = {
 def translate(text, lang="en"):
     return translations[lang].get(text, text)
 
-# Function to read all CSV files in a folder and ingest them into SQLite
+# Function to load the important dates CSV file
+def load_important_dates(important_dates_path):
+    try:
+        important_dates_df = pd.read_csv(important_dates_path)
+        important_dates_df['important_date'] = pd.to_datetime(important_dates_df['date'], format='%m%d%Y', errors='coerce').dt.strftime('%m%d%Y')
+        return important_dates_df[['important_date', 'location', 'reason']]
+    except Exception as e:
+        st.error(f"An error occurred while loading important dates CSV: {e}")
+        return pd.DataFrame()  # Return an empty dataframe in case of an error
+
+# Function to ingest CSV files into SQLite
 def ingest_csv_to_sqlite(folder_path, db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -104,19 +114,81 @@ def get_kills_and_deads_summary(df):
     kills_summary['Date'] = kills_summary['Date'].dt.strftime('%m/%d')
     deads_summary['Date'] = deads_summary['Date'].dt.strftime('%m/%d')
 
-    # Sort the data by Date (important for calculating changes)
-    kills_summary = kills_summary.sort_values(by=['governorID', 'Date'])
-    deads_summary = deads_summary.sort_values(by=['governorID', 'Date'])
-
-    # Calculate the change (difference) in killpoints and deads between consecutive dates
-    kills_summary['killpoints_change'] = kills_summary.groupby('governorID')['killpoints'].diff().fillna(0)
-    deads_summary['deads_change'] = deads_summary.groupby('governorID')['deads'].diff().fillna(0)
-
     # Pivot the data so that Date becomes columns
-    kills_pivot = kills_summary.pivot_table(index=['governorID', 'name'], columns='Date', values='killpoints_change', aggfunc='last').reset_index()
-    deads_pivot = deads_summary.pivot_table(index=['governorID', 'name'], columns='Date', values='deads_change', aggfunc='last').reset_index()
+    kills_pivot = kills_summary.pivot_table(index=['governorID', 'name'], columns='Date', values='killpoints', aggfunc='last').reset_index()
+    deads_pivot = deads_summary.pivot_table(index=['governorID', 'name'], columns='Date', values='deads', aggfunc='last').reset_index()
 
     return kills_pivot, deads_pivot
+
+# Function to update column names based on important dates CSV
+def update_column_names(df, important_dates_dict):
+    new_columns = []
+    for col in df.columns:
+        if col in important_dates_dict:
+            new_name = f"{col} {important_dates_dict[col]}"
+        else:
+            new_name = col
+        new_columns.append(new_name)
+    df.columns = new_columns
+    return df
+
+# Function to calculate differences and ensure the names are retained and reorder columns
+def calculate_changes(df):
+    # Save the non-numeric columns
+    non_numeric_columns = df[['governorID', 'name']]
+    
+    # Calculate the difference for numeric columns (killpoints, deads)
+    df = df.drop(columns=['governorID', 'name'])
+    df = df.diff(axis=1)
+    
+    # Reattach the non-numeric columns back to the result
+    df['governorID'] = non_numeric_columns['governorID']
+    df['name'] = non_numeric_columns['name']
+    
+    # Reorder the columns so that 'governorID' and 'name' are first
+    date_columns = [col for col in df.columns if col not in ['governorID', 'name']]
+    df = df[['governorID', 'name'] + date_columns]
+    
+    return df
+
+# Function to plot the trend analysis for a specific governor
+def plot_trends(df, governor_id, trend_columns, lang):
+    # Filter the data for the selected governorID
+    filtered_data = df[df['governorID'] == governor_id]
+    
+    if filtered_data.empty:
+        st.warning(translate("no_data_for_g_id", lang))
+        return
+    
+    for column in trend_columns:
+        if column in filtered_data.columns:
+            filtered_data[column] = pd.to_numeric(filtered_data[column], errors='coerce')
+            
+            filtered_data['Difference'] = filtered_data[column].diff()
+            filtered_data['Label'] = filtered_data['Difference'].apply(
+                lambda x: f"{column.capitalize()} Gained +{x}" if x > 0 else (f"{column.capitalize()} Lost {abs(x)}" if x < 0 else "")
+            )
+
+            # Create the trend chart
+            line_chart = alt.Chart(filtered_data).mark_line(color='blue').encode(
+                x='Date:T',
+                y=alt.Y(column, title=f"{column}"),
+                tooltip=['Date:T', column, 'Difference']
+            )
+
+            points_chart = alt.Chart(filtered_data).mark_text(align='left', dx=5, dy=-10, fontSize=12).encode(
+                x='Date:T',
+                y=alt.Y(column),
+                text='Label'
+            )
+
+            chart = (line_chart + points_chart).properties(
+                title=translate("trend_of", lang).format(column=column, selected_display=governor_id),
+                width=800,
+                height=500
+            )
+
+            st.altair_chart(chart)
 
 # Streamlit app
 st.set_page_config(page_title="Kingdom 1007 Stats Tracker", layout="wide")
@@ -129,6 +201,11 @@ st.title(translate("title", lang))
 
 folder_path = 'data/'
 db_path = "ingested_data.db"
+important_dates_path = 'important_dates.csv'
+
+# Load important dates
+important_dates_df = load_important_dates(important_dates_path)
+important_dates_dict = {row['important_date']: f"(location: {row['location']}, reason: {row['reason']})" for _, row in important_dates_df.iterrows()}
 
 # Ingest CSV files into SQLite
 if folder_path:
@@ -171,8 +248,8 @@ if folder_path:
                                 )
                                 filtered_data = filtered_data[filtered_data[selected_numeric_column].between(*range_values)]
 
-                    # Expanded view of the data table
-                    with st.expander("View Data Table", expanded=True):  # Expanding by default
+                    # Display data
+                    with st.expander("View Data Table"):
                         st.dataframe(filtered_data, use_container_width=True)
 
             elif page == "Trend Analysis":
@@ -201,42 +278,22 @@ if folder_path:
                             if not aggregated_data.empty:
                                 trend_columns = st.multiselect("Select columns for trends:", ['power', 'killpoints', 'deads'])
 
-                                for column in trend_columns:
-                                    if column in aggregated_data.columns:
-                                        aggregated_data[column] = pd.to_numeric(aggregated_data[column], errors='coerce')
-
-                                        aggregated_data['Difference'] = aggregated_data[column].diff()
-                                        aggregated_data['Label'] = aggregated_data['Difference'].apply(
-                                            lambda x: f"{column.capitalize()}Gained +{x}" if x > 0 else (f"{column.capitalize()}Lost {abs(x)}" if x < 0 else "")
-                                        )
-
-                                        line_chart = alt.Chart(aggregated_data).mark_line(color='blue').encode(
-                                            x='Date:T',
-                                            y=alt.Y(column, title=f"{column}"),
-                                            tooltip=['Date:T', column, 'Difference']
-                                        )
-
-                                        points_chart = alt.Chart(aggregated_data).mark_text(align='left', dx=5, dy=-10, fontSize=12).encode(
-                                            x='Date:T',
-                                            y=alt.Y(column),
-                                            text='Label'
-                                        )
-
-                                        chart = (line_chart + points_chart).properties(
-                                            title=translate("trend_of", lang).format(column=column, selected_display=selected_display),
-                                            width=800,
-                                            height=500
-                                        )
-
-                                        with st.expander(f"View Trend: {column}"):
-                                            st.altair_chart(chart)
+                                plot_trends(aggregated_data, selected_g_id, trend_columns, lang)
 
             elif page == translate("kills_and_deads_summary", lang):
                 # Aggregate the data across all tables
                 aggregated_data = aggregate_data(db_path, table_names)
 
-                # Get Kills and Deads Summary (now showing changes instead of actual values)
+                # Get Kills and Deads Summary
                 kills_changes_df, deads_changes_df = get_kills_and_deads_summary(aggregated_data)
+
+                # Calculate differences
+                kills_changes_df = calculate_changes(kills_changes_df)
+                deads_changes_df = calculate_changes(deads_changes_df)
+
+                # Update column names based on important dates
+                kills_changes_df = update_column_names(kills_changes_df, important_dates_dict)
+                deads_changes_df = update_column_names(deads_changes_df, important_dates_dict)
 
                 # Display Kills Changes Table
                 st.markdown(f"### Kills Changes Summary")
